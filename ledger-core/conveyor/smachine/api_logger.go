@@ -226,7 +226,7 @@ func (p Logger) getStepLoggerData(eventType StepLoggerEvent, stepUpdate uint32, 
 	stepData := p.logger.getStepLoggerData()
 	stepData.EventType = eventType
 	stepData.Error = err
-	if stepUpdate != 0 {
+	if stepUpdate != 0 || eventType == StepLoggerAdapterCall {
 		stepData.StepNo.step = stepUpdate
 	}
 	return stepData
