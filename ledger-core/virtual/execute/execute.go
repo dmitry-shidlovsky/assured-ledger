@@ -397,6 +397,10 @@ func (s *SMExecute) stepStartRequestProcessing(ctx smachine.ExecutionContext) sm
 		return ctx.Stop()
 	}
 
+	if s.isConstructor && objectDescriptor != nil {
+		return ctx.Stop()
+	}
+
 	ctx.SetDefaultMigration(s.migrateDuringExecution)
 	s.execution.ObjectDescriptor = objectDescriptor
 

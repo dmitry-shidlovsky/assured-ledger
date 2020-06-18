@@ -115,6 +115,7 @@ T01_S010 : SMExecute
 T01_S010 --[dotted]> T01_S001
 T01_S010 --[dashed]> T01_S010 : [smachine.NotPassed]\nWaitShared
 T01_S010 --> [*] : [isDuplicate]
+T01_S010 --> [*] : [(...).isConstructor&&objectDescriptor!=nil]
 T01_S010 --> T01_S015 : Migrate: s.migrateDuringExecution
 state "stepTakeLock" as T01_S009
 T01_S009 : SMExecute
