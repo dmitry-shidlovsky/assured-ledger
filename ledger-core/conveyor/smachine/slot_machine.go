@@ -662,16 +662,21 @@ func (m *SlotMachine) updateSlotQueue(slot *Slot, w FixedSlotWorker, activation 
 }
 
 func (m *SlotMachine) _updateSlotQueue(slot *Slot, inplaceUpdate bool, activation slotActivationMode) *Slot {
+	fmt.Printf("updateSlotQueue(%d, %v, %d)\n", slot.GetSlotID(), inplaceUpdate, activation)
 	if !slot.isQueueHead() {
 		if inplaceUpdate {
 			switch activation {
 			case activateSlot:
 				switch slot.QueueType() {
-				case ActiveSlots, WorkingSlots:
+				case ActiveSlots:
+					m.hotWaitOnly = false
+					return nil
+				case WorkingSlots:
 					return nil
 				}
 			case activateHotWaitSlot:
-				if slot.QueueType() == ActiveSlots {
+				switch slot.QueueType() {
+				case ActiveSlots, WorkingSlots:
 					return nil
 				}
 			}
