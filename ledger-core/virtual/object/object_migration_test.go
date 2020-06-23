@@ -34,7 +34,7 @@ func TestSMObject_InitSetMigration(t *testing.T) {
 	)
 
 	compareDefaultMigration := func(fn smachine.MigrateFunc) {
-		require.True(t, testutils.CmpStateFuncs(smObject.migrate, fn))
+		require.True(t, testutils.CmpStateFuncs(smObject.stepMigration, fn))
 	}
 	initCtx := smachine.NewInitializationContextMock(mc).
 		ShareMock.Return(sharedStateData).
@@ -71,7 +71,7 @@ func TestSMObject_MigrationCreateStateReport_IfStateMissing(t *testing.T) {
 		return true
 	})
 
-	smObject.migrate(migrationCtx)
+	smObject.stepMigration(migrationCtx)
 
 	mc.Finish()
 }
@@ -88,7 +88,7 @@ func TestSMObject_MigrationStop_IfStateUnknown(t *testing.T) {
 		StopMock.Return(smachine.StateUpdate{}).
 		LogMock.Return(smachine.Logger{})
 
-	smObject.migrate(migrationCtx)
+	smObject.stepMigration(migrationCtx)
 
 	mc.Finish()
 }
@@ -123,7 +123,7 @@ func TestSMObject_MigrationCreateStateReport_IfStateIsEmptyAndNoCounters(t *test
 		}).
 		JumpMock.Return(smachine.StateUpdate{})
 
-	smObject.migrate(migrationCtx)
+	smObject.stepMigration(migrationCtx)
 
 	mc.Finish()
 }
@@ -153,7 +153,7 @@ func TestSMObject_MigrationCreateStateReport_IfStateEmptyAndCountersSet(t *testi
 		return true
 	})
 
-	smObject.migrate(migrationCtx)
+	smObject.stepMigration(migrationCtx)
 
 	mc.Finish()
 }

@@ -46,9 +46,11 @@ type Info struct {
 	descriptor  descriptor.Object
 	Deactivated bool
 
-	UnorderedExecute smachine.SyncLink
-	OrderedExecute   smachine.SyncLink
-	ReadyToWork      smachine.SyncLink
+	UnorderedExecute   smachine.SyncLink
+	OrderedExecute     smachine.SyncLink
+	ReadyToWork        smachine.SyncLink
+	SummaryDone        smachine.SyncLink
+	MigratePulseNumber pulse.Number
 
 	AwaitPendingOrdered smachine.BargeIn
 
@@ -223,6 +225,7 @@ type SMObject struct {
 	SharedState
 
 	readyToWorkCtl smsync.BoolConditionalLink
+	summaryDoneCtl smsync.BoolConditionalLink
 
 	waitGetStateUntil time.Time
 
@@ -257,6 +260,9 @@ func (sm *SMObject) Init(ctx smachine.InitializationContext) smachine.StateUpdat
 	sm.readyToWorkCtl = smsync.NewConditionalBool(false, "readyToWork")
 	sm.ReadyToWork = sm.readyToWorkCtl.SyncLink()
 
+	sm.summaryDoneCtl = smsync.NewConditionalBool(false, "summaryDone")
+	sm.SummaryDone = sm.summaryDoneCtl.SyncLink()
+
 	sm.UnorderedExecute = smsync.NewSemaphore(30, "immutable calls").SyncLink()
 	sm.OrderedExecute = smsync.NewSemaphore(1, "mutable calls").SyncLink() // TODO here we need an ORDERED queue
 
@@ -270,7 +276,7 @@ func (sm *SMObject) Init(ctx smachine.InitializationContext) smachine.StateUpdat
 
 	sm.initWaitGetStateUntil()
 
-	ctx.SetDefaultMigration(sm.migrate)
+	ctx.SetDefaultMigration(sm.stepMigration)
 
 	return ctx.Jump(sm.stepGetState)
 }
@@ -398,7 +404,7 @@ func (sm *SMObject) createWaitPendingOrderedSM(ctx smachine.ExecutionContext) {
 	}
 }
 
-func (sm *SMObject) migrate(ctx smachine.MigrationContext) smachine.StateUpdate {
+func (sm *SMObject) stepMigration(ctx smachine.MigrationContext) smachine.StateUpdate {
 	if sm.GetState() == Unknown {
 		ctx.Log().Trace("SMObject migration happened when object is not ready yet")
 		return ctx.Stop()
@@ -406,6 +412,66 @@ func (sm *SMObject) migrate(ctx smachine.MigrationContext) smachine.StateUpdate 
 
 	ctx.UnpublishAll()
 
+	// store migration pulse
+	sm.MigratePulseNumber = sm.pulseSlot.PulseData().PulseNumber
+
+	sdl := ctx.Share(&sm.SummaryDone, 0)
+
+	if !ctx.Publish(SummarySyncKey{
+		objectRef:   sm.Reference,
+		pulseNumber: sm.MigratePulseNumber,
+	}, sdl) {
+		panic("failed to publish sync migrate summary")
+	}
+
+	return ctx.Jump(sm.stepPublishCallSummary)
+}
+
+func (sm *SMObject) stepPublishCallSummary(ctx smachine.ExecutionContext) smachine.StateUpdate {
+	migratePulseNumber := sm.MigratePulseNumber
+
+	summaryKey := SummarySharedKey{PulseNumber: migratePulseNumber}
+
+	summarySharedStateAccessor, ok := GetSummarySMSharedAccessor(ctx, summaryKey)
+
+	if !ok {
+		ctx.InitChild(func(ctx smachine.ConstructionContext) smachine.StateMachine {
+			return &SMCallSummary{
+				pulse: migratePulseNumber,
+			}
+		})
+
+		summarySharedStateAccessor, _ = GetSummarySMSharedAccessor(ctx, summaryKey)
+	}
+
+	action := func(shared *SharedCallSummary) {
+		shared.Requests.AddObjectRequests(sm.Reference, sm.KnownRequests, sm.PendingTable)
+
+		if !ctx.Unpublish(SummarySyncKey{
+			objectRef:   sm.Reference,
+			pulseNumber: sm.MigratePulseNumber,
+		}) {
+			panic("failed to unPublish sync migrate summary")
+		}
+	}
+
+	switch summarySharedStateAccessor.Prepare(action).TryUse(ctx).GetDecision() {
+	case smachine.NotPassed:
+		return ctx.WaitShared(summarySharedStateAccessor.SharedDataLink).ThenRepeat()
+	case smachine.Impossible:
+		panic(throw.NotImplemented())
+	case smachine.Passed:
+		// go further
+	default:
+		panic(throw.Impossible())
+	}
+
+	ctx.ApplyAdjustment(sm.summaryDoneCtl.NewValue(true))
+
+	return ctx.Jump(sm.stepFinalizer)
+}
+
+func (sm *SMObject) stepFinalizer(ctx smachine.ExecutionContext) smachine.StateUpdate {
 	smf := finalizedstate.SMStateFinalizer{
 		Reference: sm.Reference,
 	}

@@ -824,6 +824,19 @@ func (s *SMExecute) stepSendCallResult(ctx smachine.ExecutionContext) smachine.S
 
 func (s *SMExecute) stepFinishRequest(ctx smachine.ExecutionContext) smachine.StateUpdate {
 	if s.migrationHappened {
+		summarySharedKey := object.SummarySharedKey{PulseNumber: s.pulseSlot.PulseData().PulseNumber}
+		callSummaryAccessor, ok := object.GetSummarySMSharedAccessor(ctx, summarySharedKey)
+
+		if ok {
+			callSummaryAccessor.Prepare(func(sharedCallSummary *object.SharedCallSummary) {
+				ref := s.execution.Outgoing
+				requests, ok := sharedCallSummary.Requests.GetObjectsKnownRequests(ref)
+				if ok {
+					requests.GetList(s.execution.Isolation.Interference).Finish(ref, s.execution.Result)
+				}
+			}).TryUse(ctx)
+		}
+
 		return ctx.Jump(s.stepSendDelegatedRequestFinished)
 	}
 
