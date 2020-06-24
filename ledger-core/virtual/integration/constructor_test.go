@@ -548,3 +548,99 @@ func TestVirtual_CallConstructorFromConstructor(t *testing.T) {
 
 	mc.Finish()
 }
+
+func TestVirtual_Constructor_PulseChangedWhileOutgoing(t *testing.T) {
+	t.Log("C5085")
+
+	mc := minimock.NewController(t)
+
+	server, ctx := utils.NewUninitializedServer(nil, t)
+	defer server.Stop()
+
+	executeDone := server.Journal.WaitStopOf(&execute.SMExecute{}, 1)
+
+	runnerMock := logicless.NewServiceMock(ctx, mc, nil)
+	server.ReplaceRunner(runnerMock)
+	server.Init(ctx)
+
+	var (
+		isolation = contract.ConstructorIsolation()
+		callFlags = payload.BuildCallFlags(isolation.Interference, isolation.State)
+
+		class     = gen.UniqueGlobalRef()
+		outgoing  = server.RandomLocalWithPulse()
+		objectRef = reference.NewSelf(outgoing)
+	)
+
+	pl := payload.VCallRequest{
+		CallType:       payload.CTConstructor,
+		CallFlags:      callFlags,
+		CallAsOf:       server.GetPulse().PulseNumber,
+		Callee:         class,
+		CallSiteMethod: "test",
+		CallOutgoing:   outgoing,
+	}
+
+	typedChecker := server.PublisherMock.SetTypedChecker(ctx, mc, server)
+	typedChecker.VStateReport.Set(func(report *payload.VStateReport) bool {
+		require.Equal(t, payload.Empty, report.Status)
+		require.Equal(t, int32(1), report.OrderedPendingCount)
+		require.Equal(t, int32(0), report.UnorderedPendingCount)
+		return true
+	})
+	typedChecker.VDelegatedCallRequest.SetResend(true)
+	typedChecker.VDelegatedCallResponse.SetResend(true)
+	typedChecker.VDelegatedRequestFinished.Set(func(finished *payload.VDelegatedRequestFinished) bool {
+		require.Equal(t, payload.CTConstructor, finished.CallType)
+		require.Equal(t, callFlags, finished.CallFlags)
+		require.NotNil(t, finished.LatestState)
+		require.Equal(t, outgoing, finished.CallOutgoing.GetLocal())
+		require.Equal(t, []byte("234"), finished.LatestState.State)
+		return true
+	})
+	typedChecker.VCallResult.Set(func(res *payload.VCallResult) bool {
+		require.Equal(t, res.ReturnArguments, []byte("123"))
+		require.Equal(t, res.Callee, objectRef)
+		require.Equal(t, res.CallOutgoing, outgoing)
+		require.Equal(t, payload.CTConstructor, res.CallType)
+		require.Equal(t, callFlags, res.CallFlags)
+
+		return false
+	})
+
+	synchronizeExecution := NewSynchronizationPoint(1)
+
+	{
+		requestResult := requestresult.New([]byte("123"), objectRef)
+		requestResult.SetActivate(reference.Global{}, class, []byte("234"))
+
+		runnerMock.AddExecutionMock(calculateOutgoing(pl).String()).
+			AddStart(func(ctx execution.Context) {
+				synchronizeExecution.Synchronize()
+			}, &execution.Update{
+				Type:   execution.Done,
+				Result: requestResult,
+			})
+	}
+
+	server.SendPayload(ctx, &pl)
+
+	server.WaitActiveThenIdleConveyor()
+	server.IncrementPulse(ctx)
+	server.WaitActiveThenIdleConveyor()
+
+	synchronizeExecution.WaitAll(t)
+
+	testutils.WaitSignalsTimed(t, 10*time.Second, executeDone)
+	testutils.WaitSignalsTimed(t, 10*time.Second, server.Journal.WaitAllAsyncCallsDone())
+
+	{
+		assert.Equal(t, 1, typedChecker.VCallResult.Count())
+		assert.Equal(t, 1, typedChecker.VDelegatedCallRequest.Count())
+		assert.Equal(t, 1, typedChecker.VDelegatedCallResponse.Count())
+		assert.Equal(t, 1, typedChecker.VDelegatedCallRequest.Count())
+		assert.Equal(t, 1, typedChecker.VStateReport.Count())
+	}
+
+	mc.Finish()
+}
