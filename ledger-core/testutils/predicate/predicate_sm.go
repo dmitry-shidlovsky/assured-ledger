@@ -12,14 +12,12 @@ import (
 	"github.com/insolar/assured-ledger/ledger-core/testutils/debuglogger"
 )
 
-type Func = func(debuglogger.UpdateEvent) bool
-
 func AfterAnyStopOrError(event debuglogger.UpdateEvent) bool {
 	updateType := event.Update.UpdateType
 	return updateType == "stop" || updateType == "panic" || updateType == "error"
 }
 
-func NewSMTypeFilter(sample smachine.StateMachine, andPredicate Func) Func {
+func NewSMTypeFilter(sample smachine.StateMachine, andPredicate Predicate) Predicate {
 	var smType = reflect.TypeOf(sample)
 
 	return func(event debuglogger.UpdateEvent) bool {

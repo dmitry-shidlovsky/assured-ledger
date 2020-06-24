@@ -8,7 +8,7 @@ package journal
 import (
 	"github.com/insolar/assured-ledger/ledger-core/conveyor/smachine"
 	"github.com/insolar/assured-ledger/ledger-core/testutils/debuglogger"
-	"github.com/insolar/assured-ledger/ledger-core/testutils/journal/predicate"
+	"github.com/insolar/assured-ledger/ledger-core/testutils/predicate"
 	"github.com/insolar/assured-ledger/ledger-core/vanilla/synckit"
 	"github.com/insolar/assured-ledger/ledger-core/vanilla/throw"
 )
@@ -22,8 +22,8 @@ func New() *Journal {
 
 type Journal struct {
 	dispenser Dispenser
-	replay *Replay
-	async *predicate.AsyncCounter
+	replay    *Replay
+	async     *predicate.AsyncCounter
 }
 
 func (p *Journal) InterceptSlotMachineLog(underlying smachine.SlotMachineLogger, stopSignal synckit.SignalChannel) smachine.SlotMachineLogger {
@@ -63,24 +63,24 @@ func (p *Journal) Subscribe(outFn predicate.SubscriberFunc) {
 	p.dispenser.Subscribe(outFn)
 }
 
-func (p *Journal) WaitOnce(pFn predicate.Func) synckit.SignalChannel {
+func (p *Journal) WaitOnce(pFn predicate.Predicate) synckit.SignalChannel {
 	ch := make(synckit.ClosableSignalChannel, 1)
 	p.Subscribe(predicate.EmitOnce(pFn, true, ch))
 	return ch
 }
-func (p *Journal) ReplayAndWaitOnce(pFn predicate.Func) synckit.SignalChannel {
+func (p *Journal) ReplayAndWaitOnce(pFn predicate.Predicate) synckit.SignalChannel {
 	ch := make(synckit.ClosableSignalChannel, 1)
 	p.ReplayAndSubscribe(predicate.EmitOnce(pFn, true, ch))
 	return ch
 }
 
-func (p *Journal) Wait(pFn predicate.Func) synckit.SignalChannel {
+func (p *Journal) Wait(pFn predicate.Predicate) synckit.SignalChannel {
 	ch := make(synckit.ClosableSignalChannel, 1)
 	p.Subscribe(predicate.EmitByFilter(pFn, true, ch))
 	return ch
 }
 
-func (p *Journal) ReplayAndWait(pFn predicate.Func) synckit.SignalChannel {
+func (p *Journal) ReplayAndWait(pFn predicate.Predicate) synckit.SignalChannel {
 	ch := make(synckit.ClosableSignalChannel, 1)
 	p.ReplayAndSubscribe(predicate.EmitByFilter(pFn, true, ch))
 	return ch

@@ -9,25 +9,27 @@ import (
 	"github.com/insolar/assured-ledger/ledger-core/testutils/debuglogger"
 )
 
-func Never() Func {
+type Predicate = func(debuglogger.UpdateEvent) bool
+
+func Never() Predicate {
 	return func(debuglogger.UpdateEvent) bool {
 		return false
 	}
 }
 
-func Ever() Func {
+func Ever() Predicate {
 	return func(debuglogger.UpdateEvent) bool {
 		return true
 	}
 }
 
-func Not(predicate Func) Func {
+func Not(predicate Predicate) Predicate {
 	return func(event debuglogger.UpdateEvent) bool {
 		return !predicate(event)
 	}
 }
 
-func And(predicates ...Func) Func {
+func And(predicates ...Predicate) Predicate {
 	if len(predicates) == 0 {
 		return Never()
 	}
@@ -41,7 +43,7 @@ func And(predicates ...Func) Func {
 	}
 }
 
-func Or(predicates ...Func) Func {
+func Or(predicates ...Predicate) Predicate {
 	return func(event debuglogger.UpdateEvent) bool {
 		for _, fn := range predicates {
 			if fn(event) {
@@ -51,5 +53,3 @@ func Or(predicates ...Func) Func {
 		return false
 	}
 }
-
-

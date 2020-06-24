@@ -10,14 +10,14 @@ import (
 	"github.com/insolar/assured-ledger/ledger-core/vanilla/atomickit"
 )
 
-func NewCounter(predicateFn Func, initCount int) *Counter {
+func NewCounter(predicateFn Predicate, initCount int) *Counter {
 	c := &Counter{predicateFn: predicateFn}
 	c.count.Store(initCount)
 	return c
 }
 
 type Counter struct {
-	predicateFn Func
+	predicateFn Predicate
 	count       atomickit.Int
 }
 
